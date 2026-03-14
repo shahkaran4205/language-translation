@@ -96,9 +96,6 @@ export default function HomePage() {
   const localStreamRef = useRef(null);
   const micWantedRef = useRef(false);
   const autoRestartRef = useRef(true);
-  const lastSpokenRef = useRef({ text: "", at: 0 });
-  const lastTranslatedRef = useRef({ text: "", at: 0 });
-  const lastUtteranceRef = useRef("");
   const userId = useRef(
     typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
@@ -135,10 +132,6 @@ export default function HomePage() {
     () => (translateMode === "full" ? finalTranscript : lastUtterance),
     [translateMode, finalTranscript, lastUtterance]
   );
-
-  useEffect(() => {
-    lastUtteranceRef.current = lastUtterance;
-  }, [lastUtterance]);
 
   const canTranslate = useMemo(
     () => Boolean(targetLang && (activeSpeechText.trim() || typedInput.trim())),
@@ -509,16 +502,8 @@ export default function HomePage() {
 
       if (finalText) {
         const cleaned = finalText.trim();
-        let delta = cleaned;
-        const last = lastUtteranceRef.current;
-        if (last && cleaned.startsWith(last)) {
-          delta = cleaned.slice(last.length).trim();
-        }
-
-        if (delta && delta !== last) {
-          setFinalTranscript((prev) => `${prev} ${delta}`.trim());
-          setLastUtterance(delta);
-        }
+        setFinalTranscript((prev) => `${prev} ${cleaned}`.trim());
+        setLastUtterance(cleaned);
         setTranscript("");
       }
     };
@@ -537,21 +522,13 @@ export default function HomePage() {
 
   const translateText = async (text, options = {}) => {
     const { logUtterance = false } = options;
-    const trimmed = text.trim();
-    if (!trimmed) return;
-
-    const now = Date.now();
-    const last = lastTranslatedRef.current;
-    if (last.text === trimmed && now - last.at < 2000) return;
-    lastTranslatedRef.current = { text: trimmed, at: now };
-
     const start = performance.now();
     try {
       const response = await fetch("/api/translate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          text: trimmed,
+          text,
           sourceLang: autoDetect ? "" : sourceLang,
           targetLang
         })
@@ -608,7 +585,6 @@ export default function HomePage() {
 
   const handleIncomingUtterance = async (data) => {
     if (!data.text) return;
-    if (data.userId === userId.current) return;
 
     try {
       const response = await fetch("/api/translate", {
@@ -669,11 +645,6 @@ export default function HomePage() {
 
   const speakText = (text) => {
     if (!capabilities.speechSynthesis || !text) return;
-
-    const now = Date.now();
-    const last = lastSpokenRef.current;
-    if (last.text === text && now - last.at < 2000) return;
-    lastSpokenRef.current = { text, at: now };
 
     const utterance = new SpeechSynthesisUtterance(text);
     if (selectedVoice) {
