@@ -509,9 +509,15 @@ export default function HomePage() {
 
       if (finalText) {
         const cleaned = finalText.trim();
-        if (cleaned && cleaned !== lastUtteranceRef.current) {
-          setFinalTranscript((prev) => `${prev} ${cleaned}`.trim());
-          setLastUtterance(cleaned);
+        let delta = cleaned;
+        const last = lastUtteranceRef.current;
+        if (last && cleaned.startsWith(last)) {
+          delta = cleaned.slice(last.length).trim();
+        }
+
+        if (delta && delta !== last) {
+          setFinalTranscript((prev) => `${prev} ${delta}`.trim());
+          setLastUtterance(delta);
         }
         setTranscript("");
       }
