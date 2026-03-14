@@ -94,6 +94,8 @@ export default function HomePage() {
   const peersRef = useRef(new Map());
   const peerFlagsRef = useRef(new Map());
   const localStreamRef = useRef(null);
+  const micWantedRef = useRef(false);
+  const autoRestartRef = useRef(true);
   const userId = useRef(
     typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
@@ -106,6 +108,10 @@ export default function HomePage() {
       speechSynthesis: isSpeechSynthesisSupported()
     });
   }, []);
+
+  useEffect(() => {
+    autoRestartRef.current = autoRestartMic;
+  }, [autoRestartMic]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -344,6 +350,18 @@ export default function HomePage() {
   }, [sourceLang]);
 
   useEffect(() => {
+    if (typeof document === "undefined") return;
+    const handleVisibility = () => {
+      if (document.hidden && isListening) {
+        micWantedRef.current = false;
+        if (recognitionRef.current) recognitionRef.current.stop();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [isListening]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get("room");
@@ -441,7 +459,12 @@ export default function HomePage() {
       setIsListening(true);
     };
     recognition.onend = () => {
-      if (autoRestartMic && isListening) {
+      if (autoRestartRef.current && micWantedRef.current) {
+        if (typeof document !== "undefined" && document.hidden) {
+          setStatus("Paused (tab not active)");
+          setIsListening(false);
+          return;
+        }
         setStatus("Listening...");
         setTimeout(() => {
           try {
@@ -596,10 +619,17 @@ export default function HomePage() {
 
   const startListening = () => {
     if (!recognitionRef.current || isListening) return;
-    recognitionRef.current.start();
+    micWantedRef.current = true;
+    try {
+      recognitionRef.current.start();
+    } catch (error) {
+      setStatus("Mic error");
+      setIsListening(false);
+    }
   };
 
   const stopListening = () => {
+    micWantedRef.current = false;
     if (!recognitionRef.current || !isListening) return;
     recognitionRef.current.stop();
   };
