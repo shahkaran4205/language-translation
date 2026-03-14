@@ -340,6 +340,16 @@ export default function HomePage() {
 
 
   useEffect(() => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (error) {
+        // ignore stop errors when switching languages
+      }
+    }
+    micWantedRef.current = false;
+    setIsListening(false);
+    setStatus("Idle");
     recognitionRef.current = createRecognition(sourceLang);
 
     return () => {
