@@ -96,6 +96,7 @@ export default function HomePage() {
   const localStreamRef = useRef(null);
   const micWantedRef = useRef(false);
   const autoRestartRef = useRef(true);
+  const lastSpokenRef = useRef({ text: "", at: 0 });
   const userId = useRef(
     typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
@@ -585,6 +586,7 @@ export default function HomePage() {
 
   const handleIncomingUtterance = async (data) => {
     if (!data.text) return;
+    if (data.userId === userId.current) return;
 
     try {
       const response = await fetch("/api/translate", {
@@ -645,6 +647,11 @@ export default function HomePage() {
 
   const speakText = (text) => {
     if (!capabilities.speechSynthesis || !text) return;
+
+    const now = Date.now();
+    const last = lastSpokenRef.current;
+    if (last.text === text && now - last.at < 2000) return;
+    lastSpokenRef.current = { text, at: now };
 
     const utterance = new SpeechSynthesisUtterance(text);
     if (selectedVoice) {
