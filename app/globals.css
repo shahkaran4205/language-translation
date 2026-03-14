@@ -1,0 +1,235 @@
+﻿@import url("https://fonts.googleapis.com/css2?family=Fraunces:wght@300;400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+
+:root {
+  --bg: #f7f2ea;
+  --ink: #1f1b16;
+  --accent: #ef6f3c;
+  --accent-2: #0a6f5f;
+  --card: #fffaf3;
+  --muted: #6c6156;
+  --ring: #f3c2a6;
+  --shadow: 0 18px 40px rgba(31, 27, 22, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  padding: 0;
+  margin: 0;
+  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+  color: var(--ink);
+  background: radial-gradient(circle at 10% 10%, #fff2de 0%, #f7f2ea 45%, #f1e4d6 100%);
+}
+
+body {
+  min-height: 100vh;
+}
+
+main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 48px 24px 80px;
+}
+
+h1, h2, h3 {
+  font-family: "Fraunces", serif;
+  margin: 0 0 12px;
+}
+
+p {
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+
+button, select, input, textarea {
+  font-family: inherit;
+  font-size: 1rem;
+}
+
+.app-shell {
+  display: grid;
+  gap: 24px;
+}
+
+.hero {
+  display: grid;
+  gap: 12px;
+  padding: 24px 28px;
+  background: linear-gradient(120deg, #fff7ec 0%, #ffe6cf 55%, #ffddc2 100%);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+  border: 1px solid rgba(31, 27, 22, 0.08);
+}
+
+.hero-title {
+  font-size: clamp(2rem, 3vw, 3.2rem);
+}
+
+.grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.card {
+  background: var(--card);
+  border-radius: 20px;
+  padding: 20px 22px;
+  box-shadow: var(--shadow);
+  border: 1px solid rgba(31, 27, 22, 0.08);
+}
+
+.label {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 8px;
+  display: block;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+select, input, textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(31, 27, 22, 0.15);
+  background: #fffdf8;
+  outline: none;
+}
+
+select:focus, input:focus, textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(239, 111, 60, 0.2);
+}
+
+button {
+  border: none;
+  border-radius: 999px;
+  padding: 12px 18px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 10px 20px rgba(239, 111, 60, 0.2);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+button.secondary {
+  background: #fff;
+  color: var(--ink);
+  border: 1px solid rgba(31, 27, 22, 0.2);
+  box-shadow: none;
+}
+
+button.ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px dashed rgba(31, 27, 22, 0.25);
+  box-shadow: none;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+button:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 26px rgba(239, 111, 60, 0.25);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid rgba(31, 27, 22, 0.15);
+  font-size: 0.85rem;
+}
+
+.stack {
+  display: grid;
+  gap: 14px;
+}
+
+.transcript {
+  min-height: 110px;
+  padding: 16px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid rgba(31, 27, 22, 0.08);
+}
+
+.list {
+  display: grid;
+  gap: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.list-item {
+  background: #fff;
+  border-radius: 12px;
+  padding: 12px;
+  border: 1px solid rgba(31, 27, 22, 0.08);
+  display: grid;
+  gap: 6px;
+}
+
+.split {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+footer {
+  margin-top: 40px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 720px) {
+  main {
+    padding: 32px 18px 60px;
+  }
+
+  .hero {
+    padding: 18px;
+  }
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(9, 12, 20, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 24px;
+}
+
+.modal-card {
+  width: min(520px, 92vw);
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 20px 22px;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2);
+  color: #0f172a;
+}
+
+.modal-card .controls {
+  justify-content: space-between;
+  align-items: center;
+}
