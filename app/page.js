@@ -98,6 +98,7 @@ export default function HomePage() {
   const autoRestartRef = useRef(true);
   const lastSpokenRef = useRef({ text: "", at: 0 });
   const lastTranslatedRef = useRef({ text: "", at: 0 });
+  const lastUtteranceRef = useRef("");
   const userId = useRef(
     typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
@@ -134,6 +135,10 @@ export default function HomePage() {
     () => (translateMode === "full" ? finalTranscript : lastUtterance),
     [translateMode, finalTranscript, lastUtterance]
   );
+
+  useEffect(() => {
+    lastUtteranceRef.current = lastUtterance;
+  }, [lastUtterance]);
 
   const canTranslate = useMemo(
     () => Boolean(targetLang && (activeSpeechText.trim() || typedInput.trim())),
@@ -504,7 +509,7 @@ export default function HomePage() {
 
       if (finalText) {
         const cleaned = finalText.trim();
-        if (cleaned && cleaned !== lastUtterance) {
+        if (cleaned && cleaned !== lastUtteranceRef.current) {
           setFinalTranscript((prev) => `${prev} ${cleaned}`.trim());
           setLastUtterance(cleaned);
         }
