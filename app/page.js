@@ -97,6 +97,7 @@ export default function HomePage() {
   const micWantedRef = useRef(false);
   const autoRestartRef = useRef(true);
   const lastSpokenRef = useRef({ text: "", at: 0 });
+  const lastTranslatedRef = useRef({ text: "", at: 0 });
   const userId = useRef(
     typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
@@ -503,8 +504,10 @@ export default function HomePage() {
 
       if (finalText) {
         const cleaned = finalText.trim();
-        setFinalTranscript((prev) => `${prev} ${cleaned}`.trim());
-        setLastUtterance(cleaned);
+        if (cleaned && cleaned !== lastUtterance) {
+          setFinalTranscript((prev) => `${prev} ${cleaned}`.trim());
+          setLastUtterance(cleaned);
+        }
         setTranscript("");
       }
     };
@@ -523,13 +526,21 @@ export default function HomePage() {
 
   const translateText = async (text, options = {}) => {
     const { logUtterance = false } = options;
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    const now = Date.now();
+    const last = lastTranslatedRef.current;
+    if (last.text === trimmed && now - last.at < 2000) return;
+    lastTranslatedRef.current = { text: trimmed, at: now };
+
     const start = performance.now();
     try {
       const response = await fetch("/api/translate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          text,
+          trimmed,
           sourceLang: autoDetect ? "" : sourceLang,
           targetLang
         })
@@ -593,7 +604,7 @@ export default function HomePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          text: data.text,
+          text: data.trimmed,
           sourceLang: data.sourceLang,
           targetLang
         })
