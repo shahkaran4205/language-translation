@@ -66,6 +66,7 @@ export default function HomePage() {
   const [translation, setTranslation] = useState("");
   const [status, setStatus] = useState("Idle");
   const [isListening, setIsListening] = useState(false);
+  const [autoRestartMic, setAutoRestartMic] = useState(true);
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [voiceUri, setVoiceUri] = useState("");
   const [messages, setMessages] = useState([]);
@@ -440,6 +441,18 @@ export default function HomePage() {
       setIsListening(true);
     };
     recognition.onend = () => {
+      if (autoRestartMic && isListening) {
+        setStatus("Listening...");
+        setTimeout(() => {
+          try {
+            recognition.start();
+          } catch (error) {
+            setStatus("Mic error");
+            setIsListening(false);
+          }
+        }, 300);
+        return;
+      }
       setStatus("Idle");
       setIsListening(false);
     };
@@ -661,6 +674,13 @@ export default function HomePage() {
             </button>
             <button className="ghost" onClick={resetTranscripts}>
               Clear
+            </button>
+            <button
+              className="ghost"
+              onClick={() => setAutoRestartMic((prev) => !prev)}
+              disabled={!capabilities.speechRecognition}
+            >
+              Auto-restart mic: {autoRestartMic ? "On" : "Off"}
             </button>
             <span className="badge">Status: {status}</span>
             {latencyMs !== null && (
