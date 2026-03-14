@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 import { LANGUAGES, languageName } from "../lib/languages";
 
 function isSpeechRecognitionSupported() {
@@ -46,13 +45,6 @@ function useVoices(canUseSpeechSynthesis) {
   return { voices, refreshVoices: load };
 }
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const RTC_CONFIG = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
-};
-
-
 export default function HomePage() {
   const [sourceLang, setSourceLang] = useState("en");
   const [targetLang, setTargetLang] = useState("es");
@@ -66,7 +58,6 @@ export default function HomePage() {
   const [translation, setTranslation] = useState("");
   const [status, setStatus] = useState("Idle");
   const [isListening, setIsListening] = useState(false);
-  const [autoRestartMic, setAutoRestartMic] = useState(true);
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [voiceUri, setVoiceUri] = useState("");
   const [messages, setMessages] = useState([]);
@@ -75,10 +66,6 @@ export default function HomePage() {
   const [provider, setProvider] = useState("stub");
   const [muted, setMuted] = useState(false);
   const [connectionState, setConnectionState] = useState("offline");
-  const [callStatus, setCallStatus] = useState("");
-  const [remoteStreams, setRemoteStreams] = useState([]);
-  const [roomLink, setRoomLink] = useState("");
-  const [isLocalhost, setIsLocalhost] = useState(false);
   const [transport, setTransport] = useState("none");
   const [typedInput, setTypedInput] = useState("");
   const [autoDetect, setAutoDetect] = useState(false);
@@ -89,13 +76,7 @@ export default function HomePage() {
   });
 
   const recognitionRef = useRef(null);
-  const supabaseRef = useRef(null);
-  const channelRef = useRef(null);
-  const peersRef = useRef(new Map());
-  const peerFlagsRef = useRef(new Map());
-  const localStreamRef = useRef(null);
-  const micWantedRef = useRef(false);
-  const autoRestartRef = useRef(true);
+  const wsRef = useRef(null);
   const userId = useRef(
     typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
@@ -107,16 +88,6 @@ export default function HomePage() {
       speechRecognition: isSpeechRecognitionSupported(),
       speechSynthesis: isSpeechSynthesisSupported()
     });
-  }, []);
-
-  useEffect(() => {
-    autoRestartRef.current = autoRestartMic;
-  }, [autoRestartMic]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const host = window.location.hostname;
-    setIsLocalhost(host === "localhost" || host === "127.0.0.1" || host === "::1");
   }, []);
 
   const { voices, refreshVoices } = useVoices(capabilities.speechSynthesis);
@@ -138,207 +109,6 @@ export default function HomePage() {
     [targetLang, activeSpeechText, typedInput]
   );
 
-  const supabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
-
-  const getSupabase = () => {
-    if (!supabaseConfigured) return null;
-    if (!supabaseRef.current) {
-      supabaseRef.current = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    }
-    return supabaseRef.current;
-  };
-
-  const upsertRemoteStream = (peerId, stream) => {
-    setRemoteStreams((prev) => {
-      const existing = prev.find((entry) => entry.userId === peerId);
-      if (existing && existing.stream === stream) return prev;
-      if (existing) {
-        return prev.map((entry) =>
-          entry.userId === peerId ? { ...entry, stream } : entry
-        );
-      }
-      return [{ userId: peerId, stream }, ...prev];
-    });
-  };
-
-  const removeRemoteStream = (peerId) => {
-    setRemoteStreams((prev) => prev.filter((entry) => entry.userId !== peerId));
-  };
-
-  const startLocalAudio = async () => {
-    if (localStreamRef.current) return localStreamRef.current;
-    if (typeof navigator === "undefined" || !navigator.mediaDevices) {
-      setCallStatus("Microphone access is not available.");
-      return null;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      localStreamRef.current = stream;
-      peersRef.current.forEach((pc) => {
-        const hasAudio = pc
-          .getSenders()
-          .some((sender) => sender.track && sender.track.kind === "audio");
-        if (!hasAudio) {
-          stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-        }
-      });
-      setCallStatus("");
-      return stream;
-    } catch (error) {
-      setCallStatus("Microphone permission denied.");
-      return null;
-    }
-  };
-
-  const stopLocalAudio = () => {
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop());
-      localStreamRef.current = null;
-    }
-  };
-
-  const sendSignal = async (to, payload) => {
-    if (!channelRef.current) return;
-    await channelRef.current.send({
-      type: "broadcast",
-      event: "signal",
-      payload: {
-        ...payload,
-        from: userId.current,
-        to
-      }
-    });
-  };
-
-  const cleanupPeer = (peerId) => {
-    const pc = peersRef.current.get(peerId);
-    if (pc) {
-      pc.close();
-    }
-    peersRef.current.delete(peerId);
-    peerFlagsRef.current.delete(peerId);
-    removeRemoteStream(peerId);
-  };
-
-  const createPeerConnection = (peerId) => {
-    const pc = new RTCPeerConnection(RTC_CONFIG);
-    peersRef.current.set(peerId, pc);
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        sendSignal(peerId, { type: "ice", candidate: event.candidate });
-      }
-    };
-
-    pc.ontrack = (event) => {
-      const [stream] = event.streams;
-      if (stream) {
-        upsertRemoteStream(peerId, stream);
-      }
-    };
-
-    pc.onconnectionstatechange = () => {
-      if (["failed", "closed", "disconnected"].includes(pc.connectionState)) {
-        cleanupPeer(peerId);
-      }
-    };
-
-    const stream = localStreamRef.current;
-    if (stream) {
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-    }
-
-    return pc;
-  };
-
-  const getPeerConnection = (peerId) =>
-    peersRef.current.get(peerId) || createPeerConnection(peerId);
-
-  const handleSignal = async (payload) => {
-    if (!payload || payload.to !== userId.current) return;
-    const peerId = payload.from;
-    if (!peerId) return;
-    const pc = getPeerConnection(peerId);
-
-    if (payload.type === "offer") {
-      await startLocalAudio();
-      await pc.setRemoteDescription(payload.sdp);
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      await sendSignal(peerId, { type: "answer", sdp: pc.localDescription });
-      return;
-    }
-
-    if (payload.type === "answer") {
-      await pc.setRemoteDescription(payload.sdp);
-      return;
-    }
-
-    if (payload.type === "ice" && payload.candidate) {
-      try {
-        await pc.addIceCandidate(payload.candidate);
-      } catch (error) {
-        setCallStatus("Failed to add ICE candidate.");
-      }
-    }
-  };
-
-  const syncPeers = async (participantList) => {
-    const ids = participantList
-      .map((participant) => participant.userId)
-      .filter((id) => id && id !== userId.current);
-    const idSet = new Set(ids);
-
-    for (const peerId of peersRef.current.keys()) {
-      if (!idSet.has(peerId)) {
-        cleanupPeer(peerId);
-      }
-    }
-
-    for (const peerId of ids) {
-      const shouldInitiate = userId.current < peerId;
-      const flags = peerFlagsRef.current.get(peerId) || {};
-      const pc = getPeerConnection(peerId);
-
-      if (shouldInitiate && !flags.offered) {
-        flags.offered = true;
-        peerFlagsRef.current.set(peerId, flags);
-        await startLocalAudio();
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        await sendSignal(peerId, { type: "offer", sdp: pc.localDescription });
-      }
-    }
-  };
-
-  const cleanupRoom = async () => {
-    if (channelRef.current) {
-      await channelRef.current.untrack();
-      await channelRef.current.unsubscribe();
-      channelRef.current = null;
-    }
-    peersRef.current.forEach((pc) => pc.close());
-    peersRef.current.clear();
-    peerFlagsRef.current.clear();
-    stopLocalAudio();
-    setRemoteStreams([]);
-    setParticipants([]);
-    setConnectionState("offline");
-    setTransport("none");
-  };
-
-  const handleCopyLink = async () => {
-    if (!roomLink) return;
-    try {
-      await navigator.clipboard.writeText(roomLink);
-      setCallStatus("Invite link copied.");
-      setTimeout(() => setCallStatus(""), 2000);
-    } catch (error) {
-      setCallStatus("Unable to copy invite link.");
-    }
-  };
-
-
   useEffect(() => {
     recognitionRef.current = createRecognition(sourceLang);
 
@@ -350,104 +120,68 @@ export default function HomePage() {
   }, [sourceLang]);
 
   useEffect(() => {
-    if (typeof document === "undefined") return;
-    const handleVisibility = () => {
-      if (document.hidden && isListening) {
-        micWantedRef.current = false;
-        if (recognitionRef.current) recognitionRef.current.stop();
+    if (!joinedRoom || !roomId) return;
+
+    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+    const socket = new WebSocket(`${protocol}://${window.location.host}/ws`);
+    wsRef.current = socket;
+
+    socket.onopen = () => {
+      setConnectionState("online");
+      setTransport("websocket");
+      socket.send(
+        JSON.stringify({
+          type: "join",
+          userId: userId.current,
+          roomId,
+          targetLang
+        })
+      );
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "room-state") {
+          setParticipants(data.participants || []);
+        }
+        if (data.type === "join") {
+          setParticipants((prev) => {
+            const exists = prev.find((p) => p.userId === data.userId);
+            if (exists) return prev;
+            return [...prev, { userId: data.userId, targetLang: data.targetLang }];
+          });
+        }
+        if (data.type === "leave") {
+          setParticipants((prev) => prev.filter((p) => p.userId !== data.userId));
+        }
+        if (data.type === "utterance") {
+          handleIncomingUtterance(data);
+        }
+      } catch (error) {
+        setStatus("Room message error");
       }
     };
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, [isListening]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const roomParam = params.get("room");
-    if (roomParam) {
-      setRoomId(roomParam);
-      setJoinedRoom(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!roomId.trim()) {
-      setRoomLink("");
-      return;
-    }
-    setRoomLink(`${window.location.origin}?room=${encodeURIComponent(roomId.trim())}`);
-  }, [roomId]);
-
-  useEffect(() => {
-    if (!joinedRoom || !roomId) return;
-    if (!supabaseConfigured) {
-      setCallStatus("Supabase is not configured.");
+    socket.onclose = () => {
       setConnectionState("offline");
-      setTransport("supabase");
-      return;
-    }
+      setTransport("none");
+    };
 
-    const supabase = getSupabase();
-    if (!supabase) return;
-
-    setTransport("supabase");
-    setConnectionState("connecting");
-
-    const channel = supabase.channel(`room:${roomId}`, {
-      config: {
-        broadcast: { self: false },
-        presence: { key: userId.current }
-      }
-    });
-
-    channelRef.current = channel;
-
-    channel.on("broadcast", { event: "signal" }, ({ payload }) => {
-      handleSignal(payload);
-    });
-
-    channel.on("broadcast", { event: "utterance" }, ({ payload }) => {
-      handleIncomingUtterance(payload);
-    });
-
-    channel.on("presence", { event: "sync" }, () => {
-      const state = channel.presenceState();
-      const list = Object.values(state)
-        .flat()
-        .map((entry) => ({
-          userId: entry.userId,
-          targetLang: entry.targetLang
-        }));
-      const filtered = list.filter((entry) => entry.userId !== userId.current);
-      setParticipants(filtered);
-      syncPeers(filtered);
-    });
-
-    channel.subscribe(async (status) => {
-      if (status === "SUBSCRIBED") {
-        setConnectionState("online");
-        setCallStatus("");
-        await channel.track({ userId: userId.current, targetLang });
-        await startLocalAudio();
-      }
-      if (status === "CHANNEL_ERROR") {
-        setConnectionState("offline");
-        setCallStatus("Realtime connection error.");
-      }
-    });
+    socket.onerror = () => {
+      setConnectionState("offline");
+      setTransport("none");
+    };
 
     return () => {
-      cleanupRoom();
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(
+          JSON.stringify({ type: "leave", userId: userId.current, roomId })
+        );
+      }
+      socket.close();
     };
   }, [joinedRoom, roomId, targetLang]);
-
-
-  useEffect(() => {
-    if (!joinedRoom || !channelRef.current) return;
-    channelRef.current.track({ userId: userId.current, targetLang });
-  }, [joinedRoom, targetLang]);
 
   useEffect(() => {
     if (!recognitionRef.current) return;
@@ -459,23 +193,6 @@ export default function HomePage() {
       setIsListening(true);
     };
     recognition.onend = () => {
-      if (autoRestartRef.current && micWantedRef.current) {
-        if (typeof document !== "undefined" && document.hidden) {
-          setStatus("Paused (tab not active)");
-          setIsListening(false);
-          return;
-        }
-        setStatus("Listening...");
-        setTimeout(() => {
-          try {
-            recognition.start();
-          } catch (error) {
-            setStatus("Mic error");
-            setIsListening(false);
-          }
-        }, 300);
-        return;
-      }
       setStatus("Idle");
       setIsListening(false);
     };
@@ -543,16 +260,15 @@ export default function HomePage() {
           speakText(data.translation);
         }
 
-        if (joinedRoom && channelRef.current) {
-          channelRef.current.send({
-            type: "broadcast",
-            event: "utterance",
-            payload: {
+        if (joinedRoom && wsRef.current && wsRef.current.readyState === 1) {
+          wsRef.current.send(
+            JSON.stringify({
+              type: "utterance",
               userId: userId.current,
               text,
               sourceLang: autoDetect ? "" : sourceLang
-            }
-          });
+            })
+          );
         }
 
         setMessages((prev) => [
@@ -619,17 +335,10 @@ export default function HomePage() {
 
   const startListening = () => {
     if (!recognitionRef.current || isListening) return;
-    micWantedRef.current = true;
-    try {
-      recognitionRef.current.start();
-    } catch (error) {
-      setStatus("Mic error");
-      setIsListening(false);
-    }
+    recognitionRef.current.start();
   };
 
   const stopListening = () => {
-    micWantedRef.current = false;
     if (!recognitionRef.current || !isListening) return;
     recognitionRef.current.stop();
   };
@@ -659,16 +368,12 @@ export default function HomePage() {
 
   const handleJoinRoom = () => {
     if (!roomId.trim()) return;
-    if (!supabaseConfigured) {
-      setCallStatus("Supabase is not configured.");
-      return;
-    }
     setJoinedRoom(true);
   };
 
   const handleLeaveRoom = () => {
     setJoinedRoom(false);
-    cleanupRoom();
+    setParticipants([]);
   };
 
   const handleTypedSubmit = () => {
@@ -704,13 +409,6 @@ export default function HomePage() {
             </button>
             <button className="ghost" onClick={resetTranscripts}>
               Clear
-            </button>
-            <button
-              className="ghost"
-              onClick={() => setAutoRestartMic((prev) => !prev)}
-              disabled={!capabilities.speechRecognition}
-            >
-              Auto-restart mic: {autoRestartMic ? "On" : "Off"}
             </button>
             <span className="badge">Status: {status}</span>
             {latencyMs !== null && (
@@ -889,13 +587,6 @@ export default function HomePage() {
             Share a room name to broadcast your speech to other devices. Each
             member translates to their own selected language.
           </p>
-          {isLocalhost && (
-            <p>
-              You are on localhost. Other devices cannot reach this address.
-              Open the app using your computer's LAN IP (for example,
-              `http://192.168.x.x:3000`) and keep the same room name.
-            </p>
-          )}
           <div className="split">
             <div className="stack">
               <span className="label">Room name</span>
@@ -904,15 +595,6 @@ export default function HomePage() {
                 onChange={(event) => setRoomId(event.target.value)}
                 placeholder="studio"
               />
-              <div>
-                <span className="label">Share link</span>
-                <div className="controls">
-                  <input value={roomLink} readOnly placeholder="Room link appears here" />
-                  <button className="secondary" onClick={handleCopyLink} disabled={!roomLink}>
-                    Copy link
-                  </button>
-                </div>
-              </div>
               <div className="controls">
                 <button onClick={handleJoinRoom} disabled={joinedRoom}>
                   Join room
@@ -929,7 +611,6 @@ export default function HomePage() {
                 </span>
                 <span className="badge">Transport: {transport}</span>
                 <span className="badge">Room: {connectionState}</span>
-                {callStatus && <span className="badge">{callStatus}</span>}
               </div>
             </div>
             <div>
@@ -943,28 +624,6 @@ export default function HomePage() {
                     Guest {participant.userId.slice(0, 6)} ({languageName(participant.targetLang)})
                   </div>
                 ))}
-              </div>
-              <div>
-                <span className="label">Live call audio</span>
-                <div className="list">
-                  {remoteStreams.length === 0 && (
-                    <div className="list-item">No active audio streams yet.</div>
-                  )}
-                  {remoteStreams.map((entry) => (
-                    <div className="list-item" key={entry.userId}>
-                      Listening to {entry.userId.slice(0, 6)}
-                      <audio
-                        autoPlay
-                        playsInline
-                        ref={(el) => {
-                          if (el && entry.stream) {
-                            el.srcObject = entry.stream;
-                          }
-                        }}
-                      />
-                    </div>
-                  ))}
-                </div>
               </div>
             </div>
           </div>
