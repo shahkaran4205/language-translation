@@ -540,7 +540,7 @@ export default function HomePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          trimmed,
+          text: trimmed,
           sourceLang: autoDetect ? "" : sourceLang,
           targetLang
         })
@@ -604,7 +604,7 @@ export default function HomePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          text: data.trimmed,
+          text: data.text,
           sourceLang: data.sourceLang,
           targetLang
         })
